@@ -22,40 +22,40 @@
   
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Assembly-CSharp.dll</HintPath>
     </Reference>
     <Reference Include="BBI.Unity.Game">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\BBI.Unity.Game.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\BBI.Unity.Game.dll</HintPath>
     </Reference>
     <Reference Include="Carbon.Core">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Carbon.Core.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Carbon.Core.dll</HintPath>
     </Reference>
     <Reference Include="Carbon.Core.Unity">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Carbon.Core.Unity.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Carbon.Core.Unity.dll</HintPath>
     </Reference>
     <Reference Include="Carbon.Localization.Core">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Carbon.Localization.Core.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Carbon.Localization.Core.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Newtonsoft.Json.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="Unity.Addressables">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Unity.Addressables.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Unity.Addressables.dll</HintPath>
     </Reference>
     <Reference Include="Unity.Entities">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Unity.Entities.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Unity.Entities.dll</HintPath>
     </Reference>
     <Reference Include="Unity.Mathematics">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Unity.Mathematics.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Unity.Mathematics.dll</HintPath>
     </Reference>
     <Reference Include="Unity.ResourceManager">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Unity.ResourceManager.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Unity.ResourceManager.dll</HintPath>
     </Reference>
     <Reference Include="Unity.TextMeshPro">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\Unity.TextMeshPro.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.UI">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Hardspace Shipbreaker\Shipbreaker_Data\Managed\UnityEngine.UI.dll</HintPath>
     </Reference>
   </ItemGroup>
   

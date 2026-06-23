@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Unity.Entities;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -35,7 +36,8 @@ namespace ModdedShipLoader
             static Dictionary<string, Shader> shaderCache = new Dictionary<string, Shader>();
             static Dictionary<string, string> shaderToReference = new Dictionary<string, string>()
             {
-                { "Fake/_Lynx/Surface/HDRP/Lit", "2ff41ba12704fae4fbdb6d3886c89479" }
+                { "Fake/_Lynx/Surface/HDRP/Lit", "2ff41ba12704fae4fbdb6d3886c89479" },
+                { "Shader Graphs/FakeConeLight", "8680dc9b85c65c443a8ef2f97e74a0ad" }
             };
 
             static void ReplaceShaders(GameObject parent)
@@ -519,6 +521,143 @@ namespace ModdedShipLoader
             }
         }
         
+        // After OnModuleInstantiateAsyncComplete finishes for any module, find DynamicLight components
+        // that live under addressable-loaded child GOs (identified by having an ancestor with an
+        // AddressableLoader component). These lights receive whatever AllProperties the parent module
+        // has (e.g. Rocinante_RootRef with null RoomType), yielding the purple DefaultColor.
+        // We re-call SetSpawnData with a PropertyContainer built from GUIDs authored on the
+        // AddressableLoader stub GO (lightRoomTypeGUID / lightLevelGUID), falling back to
+        // RoomType_Cockpit + Light_Normal if those fields are empty.
+        [HarmonyPatch(typeof(ShipRandomizationHelper), "OnModuleInstantiateAsyncComplete")]
+        public class ShipRandomizationHelper_OnModuleInstantiateAsyncComplete
+        {
+            // Fallback GUIDs from known_assets.json.
+            private const string kDefaultRoomTypeGuid   = "90f3deeb4b0f55d49ad310f31a88ac48"; // RoomType_Cockpit
+            private const string kLightLevelNormalGuid  = "4552721616e343a49942a82dc2621911"; // Light_Normal
+            private const string kLightLevelDamagedGuid = "151c4eb20e561704aab34008b01f3567"; // Light_Damaged
+            private const string kLightLevelOffGuid     = "554231253ce67fa468bf3a7071a21d62"; // Light_NoLight
+
+            // Pick a light level GUID using authored chances. Normal fills the remainder.
+            private static string PickLightLevelGuid(float damagedChance, float brokenChance, SeedHash seed)
+            {
+                float roll = (float)seed.GenerateRandom().NextDouble();
+                if (roll < brokenChance) return kLightLevelOffGuid;
+                if (roll < brokenChance + damagedChance) return kLightLevelDamagedGuid;
+                return kLightLevelNormalGuid;
+            }
+
+            public static void Postfix(
+                ref Task __result,
+                GameObject moduleObject,
+                ShipPreview shipPreview,
+                Unity.Entities.Entity manifest,
+                Module moduleToSpawn)
+            {
+                if (moduleObject == null) return;
+                var lights = moduleObject.GetComponentsInChildren<DynamicLight>();
+                if (lights == null || lights.Length == 0) return;
+
+                var prevTask = __result;
+                __result = RunAfterAsync(prevTask, lights, moduleObject, shipPreview, manifest, moduleToSpawn);
+            }
+
+            // Walk up from a DynamicLight to find the AddressableLoader stub GO that owns it.
+            // The loader GO is a direct ancestor that has an AddressableLoader component.
+            // Returns null if the light is not under any addressable loader within moduleObject.
+            private static Component FindOwningLoader(Component dl, GameObject moduleObject)
+            {
+                Transform t = ((Component)dl).transform.parent;
+                while (t != null && t.gameObject != moduleObject)
+                {
+                    var loader = t.GetComponent(addressableType);
+                    if (loader != null) return loader;
+                    t = t.parent;
+                }
+                return null;
+            }
+
+            private static async Task RunAfterAsync(
+                Task originalTask,
+                DynamicLight[] lights,
+                GameObject moduleObject,
+                ShipPreview shipPreview,
+                Unity.Entities.Entity manifest,
+                Module moduleToSpawn)
+            {
+                try { await originalTask; } catch { /* exceptions already logged by original */ }
+
+                if (!Application.isPlaying || (shipPreview != null && shipPreview.IsEditorMockPreview))
+                    return;
+
+                // Group DynamicLights by their owning AddressableLoader so we build one
+                // PropertyContainer per loader (each loader can have different authored GUIDs).
+                var lightsByLoader = new Dictionary<Component, List<DynamicLight>>();
+                foreach (var dl in lights)
+                {
+                    var loader = FindOwningLoader(dl, moduleObject);
+                    if (loader == null) continue;
+                    if (!lightsByLoader.TryGetValue(loader, out var list))
+                        lightsByLoader[loader] = list = new List<DynamicLight>();
+                    list.Add(dl);
+                }
+
+                if (lightsByLoader.Count == 0) return;
+
+                ModdedShipLoader.LoggerInstance.LogInfo(
+                    $"[SpawnDataPatch] '{moduleObject.name}': found {lightsByLoader.Count} addressable loader(s) with DynamicLight children");
+
+                var seedHash = new SeedHash(shipPreview.Seed) + 1;
+                int globalIndex = 0;
+
+                foreach (var kv in lightsByLoader)
+                {
+                    var loader = kv.Key;
+                    var loaderLights = kv.Value;
+
+                    // Read authored GUIDs from AddressableLoader fields; fall back to defaults.
+                    string roomTypeGuid    = (string)addressableType.GetField("lightRoomTypeGUID")?.GetValue(loader);
+                    float  damagedChance   = (float)(addressableType.GetField("lightDamagedChance")?.GetValue(loader) ?? 0.2f);
+                    float  brokenChance    = (float)(addressableType.GetField("lightBrokenChance")?.GetValue(loader)  ?? 0.1f);
+                    if (string.IsNullOrEmpty(roomTypeGuid)) roomTypeGuid = kDefaultRoomTypeGuid;
+                    string lightLevelGuid = PickLightLevelGuid(damagedChance, brokenChance, seedHash + globalIndex);
+
+                    ModdedShipLoader.LoggerInstance.LogInfo(
+                        $"[SpawnDataPatch]   loader '{loader.gameObject.name}': RoomType={roomTypeGuid} LightLevel={lightLevelGuid} ({loaderLights.Count} light(s))");
+
+                    var props = new PropertyContainer();
+                    props.AssignPropertyReference(PropertyContainer.Property.RoomType,
+                        new AssetReferenceT<ModulePropertyAsset>(roomTypeGuid));
+                    props.AssignPropertyReference(PropertyContainer.Property.LightLevel,
+                        new AssetReferenceT<ModulePropertyAsset>(lightLevelGuid));
+                    await props.LoadAssetsAsync();
+
+                    ModdedShipLoader.LoggerInstance.LogInfo(
+                        $"[SpawnDataPatch]     -> RoomType='{props.GetPropertyAsset(PropertyContainer.Property.RoomType)?.name}' LightLevel='{props.GetPropertyAsset(PropertyContainer.Property.LightLevel)?.name}'");
+
+                    var spawnData = new ShipRandomizationHelper.ModuleSpawnData(
+                        shipPreview, props, moduleToSpawn.ShipMemberID, manifest);
+
+                    foreach (var dl in loaderLights)
+                    {
+                        if (dl == null) continue;
+                        try
+                        {
+                            ((ISpawnDataReceiver)dl).SetSpawnData(spawnData, seedHash + globalIndex++);
+                        }
+                        catch (Exception ex)
+                        {
+                            ModdedShipLoader.LoggerInstance.LogError(
+                                $"[SpawnDataPatch]     SetSpawnData FAILED on '{((Component)dl).gameObject.name}': {ex.GetType().Name}: {ex.Message}");
+                        }
+                    }
+
+                    props.UnloadAssets();
+                }
+
+                ModdedShipLoader.LoggerInstance.LogInfo($"[SpawnDataPatch] Done.");
+            }
+        }
+
         // Disable mass and cost, as they are wrong
         // TODO: Fix this calculation? Might just not be possible :(
         [HarmonyPatch(typeof(JobBoardScreenController), "DisplayShipInfoSalvageIndicator")]
