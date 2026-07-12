@@ -1,0 +1,20 @@
+<Project>
+
+  <!--
+    Shared MSBuild settings for every project in the solution.
+
+    ManagedDir points at the stripped Shipbreaker reference assemblies committed
+    under lib\ManagedStripped. These are method-body-stripped copies of the game's
+    Shipbreaker_Data\Managed DLLs (see lib\ManagedStripped\README.md), so the solution
+    builds locally and on CI without a game install.
+
+    To build against a live game install instead (e.g. after a game update, to
+    regenerate the stripped DLLs), override it without editing this file:
+      - set an environment variable:  ManagedDir=D:\path\to\Shipbreaker_Data\Managed
+      - or pass it on the command line: dotnet build -p:ManagedDir=...
+  -->
+  <PropertyGroup>
+    <ManagedDir Condition="'$(ManagedDir)' == ''">$(MSBuildThisFileDirectory)lib\ManagedStripped</ManagedDir>
+  </PropertyGroup>
+
+</Project>

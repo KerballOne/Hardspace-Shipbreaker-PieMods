@@ -22,19 +22,19 @@
   
   <ItemGroup>
     <Reference Include="BBI.Unity.Game">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\BBI.Unity.Game.dll</HintPath>
+      <HintPath>$(ManagedDir)\BBI.Unity.Game.dll</HintPath>
     </Reference>
     <Reference Include="Carbon.Core">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Carbon.Core.dll</HintPath>
+      <HintPath>$(ManagedDir)\Carbon.Core.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Newtonsoft.Json.dll</HintPath>
+      <HintPath>$(ManagedDir)\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="Unity.TextMeshPro">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+      <HintPath>$(ManagedDir)\Unity.TextMeshPro.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.UI">
-      <HintPath>..\..\..\..\..\Games\Xbox\Hardspace- Shipbreaker\Content\Shipbreaker_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <HintPath>$(ManagedDir)\UnityEngine.UI.dll</HintPath>
     </Reference>
   </ItemGroup>
   
@@ -42,7 +42,7 @@
     <Folder Include="Nexus\" />
   </ItemGroup>
   
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(GITHUB_ACTIONS)' != 'true'">
     <Exec Command="copy /Y &quot;$(TargetDir)$(TargetName).dll&quot; &quot;D:\Games\Xbox\Hardspace- Shipbreaker\Content\BepInEx\plugins\$(ProjectName)&quot;&#xD;&#xA;copy /Y &quot;$(TargetDir)$(TargetName).pdb&quot; &quot;D:\Games\Xbox\Hardspace- Shipbreaker\Content\BepInEx\plugins\$(ProjectName)&quot;&#xD;&#xA;copy /Y &quot;$(ProjectDir)\settings.json&quot; &quot;D:\Games\Xbox\Hardspace- Shipbreaker\Content\BepInEx\plugins\$(ProjectName)&quot;&#xD;&#xA;copy /Y &quot;$(ProjectDir)\Nexus\README.txt&quot; &quot;D:\Games\Xbox\Hardspace- Shipbreaker\Content\BepInEx\plugins\$(ProjectName)&quot;" />
   </Target>
 </Project>
