@@ -56,14 +56,34 @@ jobs:
           echo "Version: $v"
 
       - name: Package mods
-        run: bash build/package.sh Release "${{ steps.ver.outputs.version }}"
+        run: bash build/package.sh Release
 
-      - name: Upload build artifacts
+      # One artifact per mod, named exactly after the mod folder.
+      # Keep this list in sync with MODS in build/package.sh.
+      - name: Upload CustomPostersAndStickers
         uses: actions/upload-artifact@v4
-        with:
-          name: PieMods-${{ steps.ver.outputs.version }}
-          path: dist/*.zip
-          if-no-files-found: error
+        with: { name: CustomPostersAndStickers, path: dist/CustomPostersAndStickers }
+      - name: Upload DebugMenu
+        uses: actions/upload-artifact@v4
+        with: { name: DebugMenu, path: dist/DebugMenu }
+      - name: Upload EndGameDebtModifier
+        uses: actions/upload-artifact@v4
+        with: { name: EndGameDebtModifier, path: dist/EndGameDebtModifier }
+      - name: Upload FOVAdjuster
+        uses: actions/upload-artifact@v4
+        with: { name: FOVAdjuster, path: dist/FOVAdjuster }
+      - name: Upload ModdedShipLoader
+        uses: actions/upload-artifact@v4
+        with: { name: ModdedShipLoader, path: dist/ModdedShipLoader }
+      - name: Upload PieChallengeMode
+        uses: actions/upload-artifact@v4
+        with: { name: PieChallengeMode, path: dist/PieChallengeMode }
+      - name: Upload ShiftRecorder
+        uses: actions/upload-artifact@v4
+        with: { name: ShiftRecorder, path: dist/ShiftRecorder }
+      - name: Upload UpgradeCostAdjuster
+        uses: actions/upload-artifact@v4
+        with: { name: UpgradeCostAdjuster, path: dist/UpgradeCostAdjuster }
 
       # Releases only for tag pushes (published) or manual runs (draft to review).
       - name: Publish release
