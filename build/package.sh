@@ -33,7 +33,7 @@ bindir() { echo "$ROOT/$1/bin/$CONFIG/net48"; }
 
 rm -rf "$OUT"
 
-# --- Base packaging: the plugin dll + its settings.json ---------------------
+# --- Base packaging: the plugin dll -----------------------------------------
 for mod in "${MODS[@]}"; do
   dest="$OUT/$mod/BepInEx/plugins/$mod"
   mkdir -p "$dest"
@@ -41,8 +41,6 @@ for mod in "${MODS[@]}"; do
   dll="$(bindir "$mod")/$mod.dll"
   [ -f "$dll" ] || { echo "ERROR: missing build output: $dll" >&2; exit 1; }
   cp "$dll" "$dest/"
-
-  [ -f "$ROOT/$mod/settings.json" ] && cp "$ROOT/$mod/settings.json" "$dest/"
 done
 
 # --- Per-mod extras ---------------------------------------------------------
