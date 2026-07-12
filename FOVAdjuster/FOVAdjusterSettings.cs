@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,20 +10,36 @@ namespace FOVAdjuster
 {
     public class Settings
     {
-        public bool enabled;
-        public bool debugLogChanges;
-        public float fov;
-        public bool showHelmet;
-        public float toolOffsetAt90;
-        public float smashScaleAt90;
-        public List<string> damageVFXGameObjectNames;
+        public bool enabled = true;
+        public bool debugLogChanges = false;
+        public float fov = 72;
+        public bool showHelmet = true;
+        public float toolOffsetAt90 = 0.8f;
+        public float smashScaleAt90 = 1.5f;
+        public List<string> damageVFXGameObjectNames = new List<string> { "FX_ShatteredGlass_Helmet_01(Clone)" };
 
         public static Settings settings;
 
         public static void Load()
         {
-            var settingsText = System.IO.File.ReadAllText(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "settings.json"));
-            settings = JsonConvert.DeserializeObject<Settings>(settingsText);  
+            var settingsPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "settings.json");
+            var defaults = JObject.FromObject(new Settings());
+            var loaded = System.IO.File.Exists(settingsPath) ? JObject.Parse(System.IO.File.ReadAllText(settingsPath)) : new JObject();
+
+            var addedFields = false;
+            foreach (var property in defaults.Properties())
+            {
+                if (loaded.Property(property.Name) == null)
+                {
+                    loaded.Add(property.Name, property.Value);
+                    addedFields = true;
+                }
+            }
+
+            if (addedFields || !System.IO.File.Exists(settingsPath))
+                System.IO.File.WriteAllText(settingsPath, loaded.ToString(Formatting.Indented));
+
+            settings = loaded.ToObject<Settings>();
         }
     }
 }
