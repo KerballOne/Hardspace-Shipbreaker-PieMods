@@ -93,7 +93,7 @@ namespace ModdedShipLoader
                     Log($"Loading GO ref {assetGUID}", true);
 
                     handles.Add(Addressables.ResourceManager.CreateChainOperation<GameObject, GameObject>(
-                        Addressables.LoadAssetAsync<GameObject>(new AssetReferenceGameObject(assetGUID)), arg =>
+                        LoadPrefabDirect(new AssetReferenceGameObject(assetGUID)), arg =>
                         {
                             GameObject result = arg.Result;
                             if (!string.IsNullOrEmpty(childPath))
@@ -120,7 +120,9 @@ namespace ModdedShipLoader
                                 Log($"Cloned {componentsOnChildren[i].GetType().ToString()}");
                             }
 
-                            return Addressables.ResourceManager.CreateChainOperation<GameObject, GameObject>(InstantiateChildren(GameObject.Instantiate(result, addressableGO.transform)), handle =>
+                            // Components run Awake during Instantiate (StructurePart destroys itself there if its asset is
+                            // still empty), so the prefab's references have to be filled before it is instantiated.
+                            return AfterPrefabReferences(result, () => Addressables.ResourceManager.CreateChainOperation<GameObject, GameObject>(InstantiateChildren(GameObject.Instantiate(result, addressableGO.transform)), handle =>
                             {
                                 var handleResult = handle.Result;
                                 ReplaceShaders(handleResult);
@@ -146,7 +148,7 @@ namespace ModdedShipLoader
                                 }
 
                                 return Addressables.ResourceManager.CreateCompletedOperation(handleResult, null);
-                            });
+                            }));
                         })
                     );
                 }
@@ -177,8 +179,8 @@ namespace ModdedShipLoader
 
                         if(soHandles.Count > 0)
                         {
-                            return Addressables.ResourceManager.CreateChainOperation(
-                                Addressables.ResourceManager.CreateGenericGroupOperation(handles), handle =>
+                            return Addressables.ResourceManager.CreateChainOperation<GameObject, bool>(
+                                WaitForAll(soHandles), handle =>
                                     {
                                         return Addressables.ResourceManager.CreateCompletedOperation(parent, null);
                                     });
@@ -191,9 +193,178 @@ namespace ModdedShipLoader
                 );
             }
 
-            [HarmonyPostfix]
-            public static void HarmonyPostfix(ref UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<GameObject> __result, object key, Vector3 position, Quaternion rotation, Transform parent, bool trackHandle)
+            // Completes once every given operation has completed, whether it succeeded or not.
+            class WaitForAllOperation : AsyncOperationBase<bool>
             {
+                readonly List<AsyncOperationHandle> deps;
+                int remaining;
+
+                public WaitForAllOperation(List<AsyncOperationHandle> deps) { this.deps = deps; }
+
+                protected override void Execute()
+                {
+                    remaining = deps.Count;
+                    if (remaining == 0) { Complete(true, true, null); return; }
+                    foreach (var dep in deps)
+                    {
+                        if (dep.IsValid()) dep.Completed += _ => OneDone();
+                        else OneDone();
+                    }
+                }
+
+                void OneDone()
+                {
+                    if (--remaining == 0) Complete(true, true, null);
+                }
+            }
+
+            static AsyncOperationHandle<bool> WaitForAll(List<AsyncOperationHandle> handles)
+            {
+                return Addressables.ResourceManager.StartOperation(new WaitForAllOperation(handles), default(AsyncOperationHandle));
+            }
+
+            // Prefab assets whose references are already filled (they stay filled while the asset is loaded).
+            static readonly HashSet<int> filledPrefabs = new HashSet<int>();
+
+            // Starts loading every scriptable object reference of a prefab asset into the prefab itself.
+            // Returns false when there is nothing to wait for.
+            internal static bool TryFillPrefabReferences(GameObject prefab, out AsyncOperationHandle<bool> done)
+            {
+                done = default(AsyncOperationHandle<bool>);
+                if (prefab == null || filledPrefabs.Contains(prefab.GetInstanceID())) return false;
+
+                List<AsyncOperationHandle> soHandles = new List<AsyncOperationHandle>();
+                foreach (var loaderType in new[] { addressableSOType, addressableComponentLoaderType })
+                {
+                    if (loaderType == null) continue;
+                    foreach (var loader in prefab.GetComponentsInChildren(loaderType, true))
+                    {
+                        // Same rule as Addressables_LoadAssetAsync: loaders that sit on an AddressableLoader are left
+                        // to the instance pass, which runs after that loader's child has been spawned.
+                        if (addressableType != null && loader.GetComponent(addressableType) != null) continue;
+                        try
+                        {
+                            soHandles.Add(LoadScriptableObjectReferences(loader));
+                        }
+                        catch (Exception ex)
+                        {
+                            Log($"SO loading exception on prefab {prefab.name}/{loader.name}: {ex.Message}");
+                        }
+                    }
+                }
+
+                int id = prefab.GetInstanceID();
+                if (soHandles.Count == 0)
+                {
+                    filledPrefabs.Add(id);
+                    return false;
+                }
+
+                done = WaitForAll(soHandles);
+                done.Completed += _ => filledPrefabs.Add(id);
+                return true;
+            }
+
+            // Runs 'next' once the prefab's references are filled (straight away if there are none to fill).
+            static AsyncOperationHandle<GameObject> AfterPrefabReferences(GameObject prefab, Func<AsyncOperationHandle<GameObject>> next)
+            {
+                if (!TryFillPrefabReferences(prefab, out var done)) return next();
+                return Addressables.ResourceManager.CreateChainOperation<GameObject, bool>(done, _ => next());
+            }
+
+            // Loads a prefab for the loader's own use. The load patch below would hand back its wait-for-references
+            // wrapper, which is an Object-typed operation; the loader chains on the handle and fills the prefab
+            // itself, so it asks for the plain typed handle.
+            static AsyncOperationHandle<GameObject> LoadPrefabDirect(object key)
+            {
+                Addressables_LoadAssetAsync.skipPrefabWait = true;
+                try
+                {
+                    return Addressables.LoadAssetAsync<GameObject>(key);
+                }
+                finally
+                {
+                    Addressables_LoadAssetAsync.skipPrefabWait = false;
+                }
+            }
+
+            static bool insideOwnInstantiate;
+
+            // The game loads a module prefab and then instantiates it. Components run Awake during the instantiate,
+            // and StructurePart.Awake destroys the component when its StructurePartAsset is still empty. The
+            // postfix below only fills the instance afterwards, so make the instantiate wait until the prefab
+            // itself has been filled. Without this, a ship that is spawned without having been loaded earlier in
+            // the session (continuing an in-progress career ship after a game restart) loses those parts.
+            [HarmonyPrefix]
+            public static bool HarmonyPrefix(ref AsyncOperationHandle<GameObject> __result, ref bool __state, object key, Vector3 position, Quaternion rotation, Transform parent, bool trackHandle)
+            {
+                __state = false;
+                if (insideOwnInstantiate || key == null) return true;
+
+                AsyncOperationHandle<GameObject> prefabHandle;
+                try
+                {
+                    prefabHandle = LoadPrefabDirect(key);
+                }
+                catch (Exception)
+                {
+                    return true;
+                }
+
+                Func<AsyncOperationHandle<GameObject>> instantiate = () =>
+                {
+                    insideOwnInstantiate = true;
+                    try
+                    {
+                        // Goes through this patch again: the prefix lets it through and the postfix adds GameObjectReady.
+                        return Addressables.InstantiateAsync(key, position, rotation, parent, trackHandle);
+                    }
+                    finally
+                    {
+                        insideOwnInstantiate = false;
+                    }
+                };
+
+                // Usual case: the game already holds the prefab, so this is known immediately.
+                if (prefabHandle.IsDone)
+                {
+                    AsyncOperationHandle<bool> done = default(AsyncOperationHandle<bool>);
+                    bool needsFill = prefabHandle.Status == AsyncOperationStatus.Succeeded && TryFillPrefabReferences(prefabHandle.Result, out done);
+                    if (!needsFill)
+                    {
+                        Addressables.Release(prefabHandle);
+                        return true;
+                    }
+
+                    __state = true;
+                    __result = Addressables.ResourceManager.CreateChainOperation<GameObject, bool>(done, _ =>
+                    {
+                        var instance = instantiate();
+                        Addressables.Release(prefabHandle);
+                        return instance;
+                    });
+                    return false;
+                }
+
+                __state = true;
+                __result = Addressables.ResourceManager.CreateChainOperation<GameObject, GameObject>(prefabHandle, loaded =>
+                {
+                    var prefab = loaded.Status == AsyncOperationStatus.Succeeded ? loaded.Result : null;
+                    return AfterPrefabReferences(prefab, () =>
+                    {
+                        var instance = instantiate();
+                        Addressables.Release(prefabHandle);
+                        return instance;
+                    });
+                });
+                return false;
+            }
+
+            [HarmonyPostfix]
+            public static void HarmonyPostfix(ref UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<GameObject> __result, bool __state, object key, Vector3 position, Quaternion rotation, Transform parent, bool trackHandle)
+            {
+                // When the prefix took over, the instantiate it starts later comes through here by itself.
+                if (__state) return;
                 __result = Addressables.ResourceManager.CreateChainOperation<GameObject, GameObject>(__result, GameObjectReady);
             }
 
@@ -296,10 +467,73 @@ namespace ModdedShipLoader
                 return typeof(Addressables).GetMethod("LoadAssetAsync", new Type[] { typeof(object) }).MakeGenericMethod(typeof(UnityEngine.Object));
             }
 
+            internal static bool skipPrefabWait;
+            static readonly Dictionary<string, bool> modPrefabKeys = new Dictionary<string, bool>();
+            static readonly string pluginPath = BepInEx.Paths.PluginPath.Replace('/', '\\');
+
+            static bool DependsOnModBundle(UnityEngine.ResourceManagement.ResourceLocations.IResourceLocation location, int depth)
+            {
+                var id = location.InternalId;
+                if (!string.IsNullOrEmpty(id) && id.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase) &&
+                    id.Replace('/', '\\').StartsWith(pluginPath, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (depth > 4 || !location.HasDependencies) return false;
+                foreach (var dependency in location.Dependencies)
+                    if (DependsOnModBundle(dependency, depth + 1)) return true;
+                return false;
+            }
+
+            // Whether this key is a prefab that comes from a bundle under BepInEx/plugins (a custom ship's prefab).
+            static bool IsModPrefabKey(object key)
+            {
+                object runtimeKey = key is AssetReference assetReference ? assetReference.RuntimeKey : key;
+                if (!(runtimeKey is string keyString) || keyString.Length == 0) return false;
+                if (modPrefabKeys.TryGetValue(keyString, out bool known)) return known;
+
+                bool isModPrefab = false;
+                try
+                {
+                    foreach (var locator in Addressables.ResourceLocators)
+                    {
+                        if (!locator.Locate(keyString, typeof(GameObject), out var locations) || locations == null) continue;
+                        foreach (var location in locations)
+                        {
+                            if (DependsOnModBundle(location, 0)) { isModPrefab = true; break; }
+                        }
+                        if (isModPrefab) break;
+                    }
+                }
+                catch (Exception)
+                {
+                    isModPrefab = false;
+                }
+                modPrefabKeys[keyString] = isModPrefab;
+                return isModPrefab;
+            }
+
             [HarmonyPostfix]
             public static void HarmonyPostfix(ref AsyncOperationHandle<UnityEngine.Object> __result, object key)
             {
                 bool newResultValid = assetKeys != null && assetKeys.Contains(key.ToString());
+
+                // A custom ship's prefab only counts as loaded once its scriptable object references are filled.
+                // The game reads the prefab itself (not an instance) to build the job board's ship summary, and
+                // instantiates it straight after loading; parts that are still empty at either point are skipped
+                // or destroyed.
+                if (!newResultValid && !skipPrefabWait && IsModPrefabKey(key))
+                {
+                    var rm = Addressables.ResourceManager;
+                    __result = rm.CreateChainOperation<UnityEngine.Object, UnityEngine.Object>(__result, loaded =>
+                    {
+                        if (loaded.Status != AsyncOperationStatus.Succeeded)
+                            return rm.CreateCompletedOperation<UnityEngine.Object>(null, "ModdedShipLoader: prefab failed to load");
+                        var loadedObject = loaded.Result;
+                        if (loadedObject is GameObject prefab && Addressables_InstantiateAsync.TryFillPrefabReferences(prefab, out var done))
+                            return rm.CreateChainOperation<UnityEngine.Object, bool>(done, _ => rm.CreateCompletedOperation(loadedObject, string.Empty));
+                        return rm.CreateCompletedOperation(loadedObject, string.Empty);
+                    });
+                    return;
+                }
 
                 var newResult = Addressables.ResourceManager.CreateChainOperation<UnityEngine.Object, UnityEngine.Object>(__result, overrideResult =>
                 {
@@ -707,6 +941,34 @@ namespace ModdedShipLoader
                 {
                     ___m_TotalMassField.SetText("Unknown (Modded)", true);
                     ___m_TotalValueField.SetText("Unknown (Modded)", true);
+                }
+            }
+        }
+
+        // A ship preview read back from a save has null instead of an empty list for its space truck parts
+        // (LynxBinaryReader.ReadList returns null for an empty list), and a ship type without a
+        // ShipRewardsAsset has null reward tiers. The job board iterates both without a null check, throws,
+        // and leaves the previous card's image and salvage milestones on screen.
+        [HarmonyPatch(typeof(SpaceTruckHabJobBoardWidgetController), "UpdateIcons")]
+        public class SpaceTruckHabJobBoardWidgetController_UpdateIcons
+        {
+            public static void Prefix(ShipPreview shipPreview)
+            {
+                if (shipPreview != null && shipPreview.SpaceTruckPartsInShip == null)
+                {
+                    Traverse.Create(shipPreview).Field("mSpaceTruckPartsInShip").SetValue(new List<string>());
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(SalvageIndicatorController), "SetSalvageIndicatorPreview")]
+        public class SalvageIndicatorController_SetSalvageIndicatorPreview
+        {
+            public static void Prefix(ShipPreview shipToPreview)
+            {
+                if (shipToPreview != null && shipToPreview.SelectedRewards == null)
+                {
+                    Traverse.Create(shipToPreview).Property("SelectedRewards").SetValue(new List<RewardTiersAsset.SelectedRewards>());
                 }
             }
         }
