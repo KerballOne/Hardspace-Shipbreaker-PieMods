@@ -24,7 +24,10 @@ namespace ModdedShipLoader
             if (Settings.settings.enabled)
             {
                 LoggerInstance = Logger;
-                new Harmony($"{PluginInfo.PLUGIN_GUID}").PatchAll();
+                var harmony = new Harmony($"{PluginInfo.PLUGIN_GUID}");
+                harmony.PatchAll();
+                JointMemoryFix.Apply(harmony);
+                SystemDiagnostics.LogSystem();
                 Logger.LogInfo($"Plugin {PluginInfo.PLUGIN_NAME} is patched");
 
                 List<string> overrideKeys = new List<string>();
